@@ -1,75 +1,45 @@
 import streamlit as st
 import pickle
+import pandas as pd
 import requests
-import os
-from dotenv import load_dotenv
 
-# ---------- Load ENV ----------
-load_dotenv()
-API_KEY = os.getenv("TMDB_API_KEY")
-
-# ---------- Load data ----------
-movies = pickle.load(open('movies.pkl','rb'))
-similarity = pickle.load(open('similarity.pkl','rb'))
-
-# ---------- Poster Fetch ----------
-def fetch_poster(movie_id):
-    try:
-        url = f"https://api.themoviedb.org/3/movie/{movie_id}?api_key={API_KEY}&language=en-US"
-        data = requests.get(url, timeout=5).json()
-
-        poster_path = data.get('poster_path')
-
-        if poster_path:
-            return "https://image.tmdb.org/t/p/w500/" + poster_path
-
-    except:
-        pass
-
-    # fallback image
-    return "https://via.placeholder.com/500x750?text=No+Image"
-
-# ---------- Recommendation ----------
-def recommend(movie):
-    index = movies[movies['title']==movie].index[0]
-    distances = similarity[index]
-
-    movie_list = sorted(
-        list(enumerate(distances)),
-        reverse=True,
-        key=lambda x:x[1]
-    )[1:6]
-
-    recommended_movies=[]
-    recommended_posters=[]
-
-    for i in movie_list:
-        movie_id = movies.iloc[i[0]].movie_id
-        recommended_movies.append(movies.iloc[i[0]].title)
-        recommended_posters.append(fetch_poster(movie_id))
-
-    return recommended_movies,recommended_posters
-
-# ---------- UI ----------
-st.set_page_config(page_title="Movie Recommender",layout="wide")
-
+# ---------- Streamlit Setup ----------
+st.set_page_config(page_title="Movie Recommender", layout="wide")
 st.title("🎬 Movie Recommendation System")
-st.write("Select a movie and get similar recommendations!")
 
-selected_movie = st.selectbox(
-    "Choose a movie",
-    movies['title'].values
-)
+# ---------- Google Drive File IDs ----------
+MOVIES_FILE_ID = "1GOmXJxXTpLxmyBCr4f7PLRUjCRl7lagT"
+SIMILARITY_FILE_ID = "1XmEKbwAh6fkF2PKZ8zhvIdaHtXpGxhPx"
 
-if st.button("Recommend 🎥"):
+# ---------- Function to download pickle files from Google Drive ----------
+def load_pickle_from_gdrive(file_id, filename):
+    url = f"https://drive.google.com/uc?export=download&id={file_id}"
+    r = requests.get(url)
+    with open(filename, "wb") as f:
+        f.write(r.content)
+    with open(filename, "rb") as f:
+        return pickle.load(f)
 
-    names, posters = recommend(selected_movie)
+# ---------- Load Data ----------
+movies = load_pickle_from_gdrive(MOVIES_FILE_ID, "movies.pkl")
+similarity = load_pickle_from_gdrive(SIMILARITY_FILE_ID, "similarity.pkl")
 
-    col1,col2,col3,col4,col5 = st.columns(5)
+# ---------- Recommendation Function ----------
+def recommend(movie_name, n=5):
+    if movie_name not in movies['title'].values:
+        st.error("Movie not found!")
+        return []
+    
+    idx = movies[movies['title'] == movie_name].index[0]
+    distances = list(enumerate(similarity[idx]))
+    distances = sorted(distances, key=lambda x: x[1], reverse=True)
+    recommended_movies = [movies.iloc[i[0]]['title'] for i in distances[1:n+1]]
+    return recommended_movies
 
-    cols=[col1,col2,col3,col4,col5]
-
-    for i in range(5):
-        with cols[i]:
-            st.text(names[i])
-            st.image(posters[i])
+# ---------- Streamlit Interface ----------
+selected_movie = st.selectbox("Select a movie", movies['title'].values)
+if st.button("Recommend"):
+    recommendations = recommend(selected_movie)
+    st.subheader("You might also like:")
+    for i, movie in enumerate(recommendations, 1):
+        st.write(f"{i}. {movie}")
