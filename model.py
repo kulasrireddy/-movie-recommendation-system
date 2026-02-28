@@ -1,72 +1,46 @@
+# model.py
 import pandas as pd
 import ast
 import pickle
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 
-# Load datasets
+# ---------- Load CSVs ----------
 movies = pd.read_csv('data/tmdb_5000_movies.csv')
 credits = pd.read_csv('data/tmdb_5000_credits.csv')
 
+# Merge on title
 movies = movies.merge(credits, on='title')
 
-movies = movies[['movie_id','title','overview','genres','keywords','cast','crew']]
+# Keep only required columns
+columns_needed = ['id','title','overview','genres','keywords','cast','crew']
+if 'poster_path' in movies.columns:
+    columns_needed.append('poster_path')
+
+movies = movies[columns_needed]
 movies.dropna(inplace=True)
 
-# ---------- helpers ----------
+# ---------- Helper functions ----------
 def convert(text):
-    L=[]
-    for i in ast.literal_eval(text):
-        L.append(i['name'])
-    return L
-
-movies['genres']=movies['genres'].apply(convert)
-movies['keywords']=movies['keywords'].apply(convert)
+    return [i['name'] for i in ast.literal_eval(text)]
 
 def fetch_cast(text):
-    L=[]
-    counter=0
-    for i in ast.literal_eval(text):
-        if counter!=3:
-            L.append(i['name'])
-            counter+=1
-    return L
-
-movies['cast']=movies['cast'].apply(fetch_cast)
+    return [i['name'] for i in ast.literal_eval(text)[:3]]
 
 def fetch_director(text):
-    L=[]
-    for i in ast.literal_eval(text):
-        if i['job']=='Director':
-            L.append(i['name'])
-    return L
+    return [i['name'] for i in ast.literal_eval(text) if i['job']=='Director']
 
-movies['crew']=movies['crew'].apply(fetch_director)
+# Apply functions
+movies['genres'] = movies['genres'].apply(convert)
+movies['keywords'] = movies['keywords'].apply(convert)
+movies['cast'] = movies['cast'].apply(fetch_cast)
+movies['crew'] = movies['crew'].apply(fetch_director)
+movies['overview'] = movies['overview'].apply(lambda x: x.split())
 
-movies['overview']=movies['overview'].apply(lambda x:x.split())
+# ---------- Combine tags ----------
+movies['tags'] = movies['overview'] + movies['genres'] + movies['keywords'] + movies['cast'] + movies['crew']
 
-movies['tags']=movies['overview']+movies['genres']+movies['keywords']+movies['cast']+movies['crew']
+# ---------- Convert list to string (CRUCIAL) ----------
+movies['tags'] = movies['tags'].apply(lambda x: " ".join(x))
 
-new_df=movies[['movie_id','title','tags']]
-new_df['tags']=new_df['tags'].apply(lambda x:" ".join(x))
-
-# ---------- vectorization ----------
-cv=CountVectorizer(max_features=5000,stop_words='english')
-vectors=cv.fit_transform(new_df['tags']).toarray()
-
-similarity=cosine_similarity(vectors)
-
-# ---------- save ----------
-# ---------- Preprocessing ----------
-
-# Example: suppose new_df is a slice of some original DataFrame
-# Fix SettingWithCopyWarning using .loc
-new_df.loc[:, 'tags'] = new_df['tags'].apply(lambda x: " ".join(x))
-
-# ---------- Save Models / Data ----------
-# Use protocol=4 for smaller, efficient pickle files
-pickle.dump(new_df, open('movies.pkl', 'wb'), protocol=4)
-pickle.dump(similarity, open('similarity.pkl', 'wb'), protocol=4)
-
-print("✅ Model and data saved successfully!")
-print("✅ Model created successfully!")
+# ---------- Save pickle ----------
+pickle.dump(movies, open('movies.pkl','wb'))
+print("✅ movies.pkl created successfully!")
