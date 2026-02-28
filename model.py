@@ -57,7 +57,16 @@ vectors=cv.fit_transform(new_df['tags']).toarray()
 similarity=cosine_similarity(vectors)
 
 # ---------- save ----------
-pickle.dump(new_df,open('movies.pkl','wb'))
-pickle.dump(similarity,open('similarity.pkl','wb'))
+# ---------- Preprocessing ----------
 
+# Example: suppose new_df is a slice of some original DataFrame
+# Fix SettingWithCopyWarning using .loc
+new_df.loc[:, 'tags'] = new_df['tags'].apply(lambda x: " ".join(x))
+
+# ---------- Save Models / Data ----------
+# Use protocol=4 for smaller, efficient pickle files
+pickle.dump(new_df, open('movies.pkl', 'wb'), protocol=4)
+pickle.dump(similarity, open('similarity.pkl', 'wb'), protocol=4)
+
+print("✅ Model and data saved successfully!")
 print("✅ Model created successfully!")
